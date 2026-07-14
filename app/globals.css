@@ -73,22 +73,38 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .assessment.failed { color: #8a493c; background: #f7ddd4; }
 .assessment.failed b { background: var(--coral); }
 .meal-list { display: grid; }
-.meal-list label, .workout-done { position: relative; display: grid; grid-template-columns: 24px 1fr; gap: 12px; padding: 15px 0; border-top: 1px solid #e7e4dc; cursor: pointer; }
-.meal-list label:first-child { border-top: 0; }
-.meal-list input, .workout-done input, .micro-checks input { position: absolute; opacity: 0; pointer-events: none; }
+.meal-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 12px; align-items: center; padding: 15px 0; border-top: 1px solid #e7e4dc; }
+.meal-row:first-child { border-top: 0; }
+.meal-check, .workout-done { position: relative; display: grid; grid-template-columns: 24px 1fr; gap: 12px; cursor: pointer; }
+.meal-check input, .meal-photo-upload input, .movement-check input, .workout-done input, .micro-checks input { position: absolute; opacity: 0; pointer-events: none; }
 .custom-check { width: 22px; height: 22px; display: grid; place-items: center; border: 1px solid #b9c0bc; border-radius: 7px; color: transparent; transition: .18s ease; }
 .checked .custom-check { color: white; border-color: var(--sage); background: var(--sage); }
-.meal-list label > span:last-child { display: grid; gap: 4px; color: var(--muted); font-size: 12px; line-height: 1.6; }
+.meal-check > span:last-child { display: grid; gap: 4px; color: var(--muted); font-size: 12px; line-height: 1.6; }
 .meal-list b { color: var(--ink); font-size: 13px; }
-.meal-list .checked > span:last-child { opacity: .6; }
+.meal-row.checked .meal-check > span:last-child { opacity: .6; }
+.meal-photo-upload { position: relative; min-width: 94px; min-height: 38px; display: flex; align-items: center; justify-content: center; gap: 5px; padding: 7px 9px; overflow: hidden; border: 1px dashed #aebbb5; border-radius: 10px; color: #46665b; background: #f1f5f0; cursor: pointer; }
+.meal-photo-upload > span { font-size: 17px; line-height: 1; }
+.meal-photo-upload > b { color: inherit; font-size: 10px; white-space: nowrap; }
+.meal-photo-upload.has-photo { justify-content: flex-start; border-style: solid; }
+.meal-photo-upload img { width: 28px; height: 28px; flex: 0 0 auto; object-fit: cover; border-radius: 6px; }
+.meal-photo-status { grid-column: 1 / -1; margin-left: 36px; color: var(--muted); font-size: 9px; line-height: 1.5; }
+.meal-photo-status.passed { color: #4f7b62; }
+.meal-photo-status.failed { color: #a45647; }
 .workout-card ul { display: grid; gap: 10px; padding: 0; margin: 0 0 20px; list-style: none; counter-reset: movement; }
-.exercise-figure { width: 100%; height: 260px; display: block; margin-bottom: 20px; object-fit: cover; object-position: center 38%; border-radius: 14px; }
 .workout-card li { display: flex; gap: 10px; color: #435254; font-size: 13px; }
 .workout-card li::before { counter-increment: movement; content: counter(movement, decimal-leading-zero); color: var(--coral); font-family: Georgia, serif; font-size: 11px; }
 .video-links { display: grid; gap: 8px; margin: 4px 0 20px; }
 .video-links a { display: grid; grid-template-columns: 26px 1fr auto; align-items: center; gap: 10px; padding: 12px; color: var(--ink); background: #edf1ec; border-radius: 10px; text-decoration: none; font-size: 12px; }
 .video-links a span { color: var(--coral); font-family: Georgia, serif; }
 .video-links a b { color: var(--sage); font-size: 10px; }
+.movement-list { display: grid; margin: 2px 0 18px; border-top: 1px solid #e7e4dc; }
+.movement-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 13px 0; border-bottom: 1px solid #e7e4dc; }
+.movement-check { position: relative; min-width: 0; display: grid; grid-template-columns: 22px 24px minmax(0, 1fr); gap: 9px; align-items: center; cursor: pointer; }
+.movement-number { color: var(--coral); font-family: Georgia, serif; font-size: 10px; }
+.movement-check b { color: #435254; font-size: 12px; line-height: 1.5; }
+.movement-row.checked .movement-check b { opacity: .55; text-decoration: line-through; }
+.movement-video { display: inline-flex; align-items: center; gap: 5px; padding: 8px 9px; border-radius: 9px; color: #43695c; background: #edf2ed; text-decoration: none; font-size: 9px; font-weight: 700; white-space: nowrap; }
+.movement-video span { display: grid; place-content: center; width: 18px; height: 18px; border-radius: 50%; color: white; background: var(--sage); font-size: 7px; }
 .workout-done { grid-template-columns: 24px 1fr; align-items: center; margin-top: 8px; padding: 16px; border: 1px solid var(--coral-soft); border-radius: 12px; background: #fff4ee; }
 .workout-done.checked { background: #e8f0eb; border-color: #b9cbbf; }
 .workout-done b { font-size: 13px; }
@@ -178,6 +194,8 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .plan-day small { color: var(--muted); font-size: 9px; }
 .weekly-plan h4 { margin: 0 0 10px; font-size: 11px; }
 .weekly-plan ol { display: grid; gap: 7px; margin: 0; padding-left: 17px; color: var(--muted); font-size: 10px; line-height: 1.5; }
+.weekly-plan ol li { padding-left: 2px; }
+.plan-video-link { display: inline-block; margin-left: 7px; color: #5d8376; text-decoration: none; font-size: 9px; font-weight: 700; }
 .rules-card { margin-top: 18px; }
 .rules-card h3 { margin-top: 0; }
 .rules-card ul { display: grid; gap: 9px; padding-left: 18px; color: var(--muted); font-size: 11px; line-height: 1.6; }
@@ -234,6 +252,10 @@ footer p { max-width: 620px; margin: 0; text-align: right; line-height: 1.6; }
   .today-heading h2 { font-size: 29px; }
   .score-ring { width: 68px; height: 68px; flex: 0 0 auto; }
   .check-card, .metrics-card { padding: 18px; border-radius: 16px; }
+  .meal-row { grid-template-columns: 1fr; }
+  .meal-photo-upload { width: fit-content; margin-left: 36px; }
+  .movement-row { grid-template-columns: 1fr; }
+  .movement-video { width: fit-content; margin-left: 64px; }
   .photo-layout { grid-template-columns: 1fr; }
   .favorite-list { grid-template-columns: 1fr; }
   .section-title { flex-wrap: wrap; }

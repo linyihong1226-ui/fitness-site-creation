@@ -3,6 +3,13 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+type MealField = "breakfast" | "lunch" | "dinner" | "protein";
+type PhotoCheck = {
+  name: string;
+  status: "" | "checking" | "passed" | "failed";
+  reason: string;
+};
+
 type DayLog = {
   breakfast: boolean;
   lunch: boolean;
@@ -27,6 +34,8 @@ type DayLog = {
   photoName: string;
   photoStatus: "" | "checking" | "passed" | "failed";
   photoReason: string;
+  mealPhotos: Partial<Record<MealField, PhotoCheck>>;
+  exerciseChecks: Record<string, boolean>;
 };
 
 type Logs = Record<string, DayLog>;
@@ -209,6 +218,8 @@ const emptyLog = (): DayLog => ({
   photoName: "",
   photoStatus: "",
   photoReason: "",
+  mealPhotos: {},
+  exerciseChecks: {},
 });
 
 function keyFor(week: number, day: number) {
@@ -240,6 +251,7 @@ export default function Home() {
   const [editingMeals, setEditingMeals] = useState(false);
   const [editingWorkout, setEditingWorkout] = useState(false);
   const [photoPreview, setPhotoPreview] = useState("");
+  const [mealPhotoPreviews, setMealPhotoPreviews] = useState<Partial<Record<MealField, string>>>({});
   const [photoType, setPhotoType] = useState("训练");
   const [ready, setReady] = useState(false);
 
@@ -303,6 +315,17 @@ export default function Home() {
   const workoutMinutes = Number(log.workoutMinutes || (selectedDay === 3 || selectedDay === 6 ? 35 : selectedDay === 2 ? 45 : 40));
   const overloadTerms = selectedDay === 2 && /跳绳|跑步|腿举|分腿蹲|额外HIIT|冲刺/.test(log.workoutText);
   const workoutAssessment = workoutMinutes >= 20 && workoutMinutes <= 65 && !overloadTerms;
+  const workoutItems = (log.workoutText.trim() ? log.workoutText : selectedPlan.workout.join("\n"))
+    .split("\n")
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+  const mealRows: { field: MealField; label: string; text: string }[] = [
+    { field: "breakfast", label: "早餐", text: selectedPlan.meals[0] },
+    { field: "lunch", label: "午餐", text: selectedPlan.meals[1] },
+    { field: "dinner", label: "晚餐", text: selectedPlan.meals[3] },
+    { field: "protein", label: "加餐／蛋白质", text: `${selectedPlan.meals[2]} · 今日蛋白质85–90g` },
+  ];
 
   const chooseDay = (week: number, day: number) => {
     setSelectedWeek(week);
@@ -322,6 +345,19 @@ export default function Home() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedKey]);
 
+  useEffect(() => {
+    let stale = false;
+    const fields: MealField[] = ["breakfast", "lunch", "dinner", "protein"];
+    Promise.all(fields.map(async (field) => [field, await loadPhoto(`${selectedKey}:meal:${field}`)] as const)).then((items) => {
+      if (stale) return;
+      setMealPhotoPreviews((current) => {
+        Object.values(current).forEach((url) => url && URL.revokeObjectURL(url));
+        return Object.fromEntries(items.filter(([, blob]) => blob).map(([field, blob]) => [field, URL.createObjectURL(blob!)]));
+      });
+    });
+    return () => { stale = true; };
+  }, [selectedKey]);
+
   const handlePhoto = async (file?: File) => {
     if (!file) return;
     update("photoStatus", "checking");
@@ -333,6 +369,48 @@ export default function Home() {
     update("photoStatus", result.passed ? "passed" : "failed");
     update("photoReason", result.reason);
     if (result.passed) update(photoType === "训练" ? "workout" : photoType === "餐食" ? "protein" : "stepsDone", true);
+  };
+
+  const handleMealPhoto = async (field: MealField, file?: File) => {
+    if (!file) return;
+    const setPhotoCheck = (photo: PhotoCheck, checked?: boolean) => {
+      setLogs((current) => {
+        const currentLog = { ...emptyLog(), ...(current[selectedKey] || {}) };
+        return {
+          ...current,
+          [selectedKey]: {
+            ...currentLog,
+            ...(checked === undefined ? {} : { [field]: checked }),
+            mealPhotos: { ...currentLog.mealPhotos, [field]: photo },
+          },
+        };
+      });
+    };
+    setPhotoCheck({ name: file.name, status: "checking", reason: "正在检查图片……" });
+    const result = await inspectPhoto(file);
+    await savePhoto(`${selectedKey}:meal:${field}`, file);
+    setMealPhotoPreviews((current) => {
+      if (current[field]) URL.revokeObjectURL(current[field]!);
+      return { ...current, [field]: URL.createObjectURL(file) };
+    });
+    setPhotoCheck({ name: file.name, status: result.passed ? "passed" : "failed", reason: result.reason }, result.passed ? true : undefined);
+  };
+
+  const toggleExercise = (index: number, checked: boolean) => {
+    setLogs((current) => {
+      const currentLog = { ...emptyLog(), ...(current[selectedKey] || {}) };
+      const exerciseChecks = { ...currentLog.exerciseChecks, [String(index)]: checked };
+      const workout = workoutItems.every((_, itemIndex) => exerciseChecks[String(itemIndex)]);
+      return { ...current, [selectedKey]: { ...currentLog, exerciseChecks, workout } };
+    });
+  };
+
+  const toggleWholeWorkout = (checked: boolean) => {
+    const exerciseChecks = Object.fromEntries(workoutItems.map((_, index) => [String(index), checked]));
+    setLogs((current) => ({
+      ...current,
+      [selectedKey]: { ...emptyLog(), ...(current[selectedKey] || {}), exerciseChecks, workout: checked },
+    }));
   };
 
   const addFavorite = () => {
@@ -407,24 +485,30 @@ export default function Home() {
                 <Assessment passed={mealAssessment} passedText="符合减脂计划" failedText={`建议调整至${calorieRange[0]}–${calorieRange[1]} kcal、蛋白质80–105g`} />
               </div>}
               <div className="meal-list">
-                {(["breakfast", "lunch", "dinner"] as const).map((field, index) => (
-                  <label className={log[field] ? "checked" : ""} key={field}>
-                    <input type="checkbox" checked={log[field]} onChange={(e) => update(field, e.target.checked)} />
-                    <span className="custom-check">✓</span>
-                    <span><b>{["早餐", "午餐", "晚餐"][index]}</b>{selectedPlan.meals[[0, 1, 3][index]]}</span>
-                  </label>
-                ))}
-                <label className={log.protein ? "checked" : ""}>
-                  <input type="checkbox" checked={log.protein} onChange={(e) => update("protein", e.target.checked)} />
-                  <span className="custom-check">✓</span>
-                  <span><b>加餐／蛋白质</b>{selectedPlan.meals[2]} · 今日蛋白质85–90g</span>
-                </label>
+                {mealRows.map(({ field, label, text }) => {
+                  const photo = log.mealPhotos[field];
+                  const preview = mealPhotoPreviews[field];
+                  return <div className={`meal-row ${log[field] ? "checked" : ""}`} key={field}>
+                    <label className="meal-check">
+                      <input type="checkbox" checked={log[field]} onChange={(e) => update(field, e.target.checked)} />
+                      <span className="custom-check">✓</span>
+                      <span><b>{label}</b>{text}</span>
+                    </label>
+                    <label className={`meal-photo-upload ${preview ? "has-photo" : ""}`}>
+                      <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(e) => handleMealPhoto(field, e.target.files?.[0])} />
+                      {preview ? <img src={preview} alt={`${label}打卡照片`} /> : <span aria-hidden="true">＋</span>}
+                      <b>{preview ? "更换照片" : "拍照打卡"}</b>
+                    </label>
+                    {photo?.status && <small className={`meal-photo-status ${photo.status}`}>
+                      {photo.status === "checking" ? "正在检查……" : photo.status === "passed" ? "✓ 照片打卡成功" : `请重拍：${photo.reason}`}
+                    </small>}
+                  </div>;
+                })}
               </div>
             </div>
 
             <div className="check-card workout-card">
               <div className="section-title"><span>02</span><h3>训练打卡</h3><em>{selectedPlan.tag}</em><button className="edit-button" onClick={() => setEditingWorkout((v) => !v)}>{editingWorkout ? "收起编辑" : "修改训练"}</button></div>
-              <img className="exercise-figure" src={selectedPlan.image} alt={`${selectedPlan.title}动作示意图`} />
               {editingWorkout && <div className="editor-box">
                 <label>修改后的训练内容<textarea value={log.workoutText || selectedPlan.workout.join("\n")} onChange={(e) => update("workoutText", e.target.value)} /></label>
                 <div className="editor-numbers">
@@ -433,12 +517,26 @@ export default function Home() {
                 </div>
                 <Assessment passed={workoutAssessment} passedText="训练负荷合适" failedText={overloadTerms ? "周三不建议追加跑步、跳绳或额外高强度训练" : "建议把单次训练控制在20–65分钟"} />
               </div>}
-              <ul>{selectedPlan.workout.map((item) => <li key={item}>{item}</li>)}</ul>
-              {selectedPlan.videos && <div className="video-links">{selectedPlan.videos.map(([name, url], index) => <a href={url} target="_blank" rel="noreferrer" key={url}><span>0{index + 1}</span>{name}<b>打开 ↗</b></a>)}</div>}
+              <div className="movement-list">
+                {workoutItems.map((item, index) => {
+                  const checked = Boolean(log.exerciseChecks[String(index)]);
+                  return <div className={`movement-row ${checked ? "checked" : ""}`} key={`${item}-${index}`}>
+                    <label className="movement-check">
+                      <input type="checkbox" checked={checked} onChange={(e) => toggleExercise(index, e.target.checked)} />
+                      <span className="custom-check">✓</span>
+                      <span className="movement-number">{String(index + 1).padStart(2, "0")}</span>
+                      <b>{item}</b>
+                    </label>
+                    <a className="movement-video" href={videoForMovement(item)} target="_blank" rel="noreferrer" aria-label={`观看${item}动作讲解视频`}>
+                      <span aria-hidden="true">▶</span> 动作讲解
+                    </a>
+                  </div>;
+                })}
+              </div>
               <label className={`workout-done ${log.workout ? "checked" : ""}`}>
-                <input type="checkbox" checked={log.workout} onChange={(e) => update("workout", e.target.checked)} />
+                <input type="checkbox" checked={log.workout} onChange={(e) => toggleWholeWorkout(e.target.checked)} />
                 <span className="custom-check">✓</span>
-                <b>今天的训练完成了</b>
+                <b>{log.workout ? "今天的训练已全部完成" : "一键完成全部训练"}</b>
               </label>
             </div>
 
@@ -552,7 +650,7 @@ export default function Home() {
             {dayPlans.map((plan, day) => <article key={plan.title}>
               <div className="plan-day"><img src={plan.image} alt={`${plan.title}动作图示`} /><span>{dayNames[day]}</span><b>{plan.title}</b><small>{plan.tag}</small></div>
               <div><h4>当天饮食</h4><ol>{plan.meals.map((meal) => <li key={meal}>{meal}</li>)}</ol></div>
-              <div><h4>当天训练</h4><ol>{plan.workout.map((item) => <li key={item}>{item}</li>)}</ol></div>
+              <div><h4>当天训练</h4><ol>{plan.workout.map((item) => <li key={item}>{item}<a className="plan-video-link" href={videoForMovement(item)} target="_blank" rel="noreferrer">讲解视频 ↗</a></li>)}</ol></div>
             </article>)}
           </div>
           <div className="rules-card"><h3>调整规则</h3><ul><li>每周平均下降0.15–0.35kg：保持计划。</li><li>连续2周体重均值和腰围都不变：每天增加约1,500步。</li><li>增加步数后再过2周仍不变：每天减少约100 kcal，但不低于1,300 kcal。</li><li>每周下降超过0.5kg或力量明显下降：每天增加100–150 kcal。</li><li>经期前后暂不调整，等经期结束后再看趋势。</li></ul></div>
@@ -574,6 +672,17 @@ function SmallCheck({ label, checked, onChange }: { label: string; checked: bool
 
 function Assessment({ passed, passedText, failedText }: { passed: boolean; passedText: string; failedText: string }) {
   return <div className={`assessment ${passed ? "passed" : "failed"}`}><b>{passed ? "✓" : "!"}</b><span>{passed ? passedText : failedText}</span></div>;
+}
+
+function videoForMovement(item: string) {
+  if (item.includes("胸部提升负重训练")) return "https://www.bilibili.com/video/BV1Ey4y1Y7zj/";
+  if (item.includes("新手友好腹部训练")) return "https://www.bilibili.com/video/BV1kA411q7cH/";
+  if (item.includes("暴汗高强度有氧舞")) return "https://www.bilibili.com/video/BV1R3411A7g4/";
+  const topic = item
+    .replace(/\d+\s*(分钟|秒|组|次)/g, "")
+    .replace(/[×＋、，或·]/g, " ")
+    .trim();
+  return `https://search.bilibili.com/all?keyword=${encodeURIComponent(`${topic} 正确动作讲解`)}`;
 }
 
 function mediaDb(): Promise<IDBDatabase> {
