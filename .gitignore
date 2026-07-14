@@ -57,3 +57,7 @@ next-env.d.ts
 *.tgz
 *.tar.gz
 *.zip
+
+# local Sites deployment identity
+/.openai/hosting.json
+!/.openai/hosting.example.json
