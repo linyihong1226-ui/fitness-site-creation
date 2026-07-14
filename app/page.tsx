@@ -39,12 +39,24 @@ type DayLog = {
 };
 
 type Logs = Record<string, DayLog>;
-type Favorite = { id: string; title: string; url: string; category: string; note: string };
+type FavoriteKind = "workout" | "meal";
+type Favorite = {
+  id: string;
+  title: string;
+  url: string;
+  kind: FavoriteKind;
+  folder: string;
+  note: string;
+  cover: string;
+  category?: string;
+};
+
+const trainingFolders = ["全部", "全身有氧", "胸部", "背部", "肩臂", "腹部核心", "臀腿", "拉伸恢复"];
 
 const starterFavorites: Favorite[] = [
-  { id: "starter-cardio", title: "10分钟暴汗高强度有氧舞", url: "https://www.bilibili.com/video/BV1R3411A7g4/", category: "有氧", note: "周三组合课第3段；当天不再追加其他HIIT。" },
-  { id: "starter-abs", title: "10分钟新手友好腹部训练", url: "https://www.bilibili.com/video/BV1kA411q7cH/", category: "训练", note: "周三组合课第2段；腰酸时缩小动作幅度。" },
-  { id: "starter-chest", title: "10分钟胸部提升负重训练", url: "https://www.bilibili.com/video/BV1Ey4y1Y7zj/", category: "训练", note: "周三组合课第1段；先从每只1.5–3kg开始。" },
+  { id: "starter-cardio", title: "10分钟暴汗高强度有氧舞", url: "https://www.bilibili.com/video/BV1R3411A7g4/", kind: "workout", folder: "全身有氧", note: "周三组合课第3段；当天不再追加其他HIIT。", cover: "https://i2.hdslb.com/bfs/archive/173a6c38ab24f9a7b394c2bb6b5f7c1f14412610.jpg" },
+  { id: "starter-abs", title: "10分钟新手友好腹部训练", url: "https://www.bilibili.com/video/BV1kA411q7cH/", kind: "workout", folder: "腹部核心", note: "周三组合课第2段；腰酸时缩小动作幅度。", cover: "https://i0.hdslb.com/bfs/archive/45b79f3b14dbb80a4d9e190aaf20af3c0ca9b2bc.jpg" },
+  { id: "starter-chest", title: "10分钟胸部提升负重训练", url: "https://www.bilibili.com/video/BV1Ey4y1Y7zj/", kind: "workout", folder: "胸部", note: "周三组合课第1段；先从每只1.5–3kg开始。", cover: "https://i2.hdslb.com/bfs/archive/5ed7b97d79233fc6bf8f3c794a70774cbf0aafc4.jpg" },
 ];
 
 const dayNames = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
@@ -247,7 +259,10 @@ export default function Home() {
   const [startDate, setStartDate] = useState(mondayOfCurrentWeek());
   const [logs, setLogs] = useState<Logs>({});
   const [favorites, setFavorites] = useState<Favorite[]>([]);
-  const [favoriteDraft, setFavoriteDraft] = useState({ title: "", url: "", category: "训练", note: "" });
+  const [favoriteDraft, setFavoriteDraft] = useState({ title: "", url: "", kind: "workout" as FavoriteKind, folder: "全身有氧", note: "", cover: "" });
+  const [librarySection, setLibrarySection] = useState<FavoriteKind>("workout");
+  const [trainingFolder, setTrainingFolder] = useState("全部");
+  const [savingFavorite, setSavingFavorite] = useState(false);
   const [editingMeals, setEditingMeals] = useState(false);
   const [editingWorkout, setEditingWorkout] = useState(false);
   const [photoPreview, setPhotoPreview] = useState("");
@@ -265,7 +280,18 @@ export default function Home() {
       }
       if (savedStart) setStartDate(savedStart);
       if (savedFavorites) {
-        try { setFavorites(JSON.parse(savedFavorites)); } catch { setFavorites(starterFavorites); }
+        try {
+          const parsed = JSON.parse(savedFavorites) as Partial<Favorite>[];
+          setFavorites(parsed.map((item) => ({
+            id: item.id || crypto.randomUUID(),
+            title: item.title || "未命名收藏",
+            url: item.url || "#",
+            kind: item.kind || (item.category === "饮食" ? "meal" : "workout"),
+            folder: item.folder || inferTrainingFolder(item.title || "", item.category),
+            note: item.note || "",
+            cover: item.cover || coverForKnownVideo(item.url || ""),
+          })));
+        } catch { setFavorites(starterFavorites); }
       } else setFavorites(starterFavorites);
       setReady(true);
     });
@@ -413,13 +439,24 @@ export default function Home() {
     }));
   };
 
-  const addFavorite = () => {
+  const addFavorite = async () => {
     const url = favoriteDraft.url.trim();
     const title = favoriteDraft.title.trim();
     if (!title || !/^https?:\/\//i.test(url)) return;
-    setFavorites((items) => [{ id: crypto.randomUUID(), ...favoriteDraft, title, url }, ...items]);
-    setFavoriteDraft({ title: "", url: "", category: "训练", note: "" });
+    setSavingFavorite(true);
+    let cover = favoriteDraft.cover.trim() || coverForKnownVideo(url);
+    if (!cover) {
+      try {
+        const response = await fetch(`/api/link-preview?url=${encodeURIComponent(url)}`);
+        if (response.ok) cover = ((await response.json()) as { cover?: string }).cover || "";
+      } catch { /* A designed fallback cover remains visible. */ }
+    }
+    setFavorites((items) => [{ id: crypto.randomUUID(), ...favoriteDraft, title, url, cover }, ...items]);
+    setFavoriteDraft({ title: "", url: "", kind: librarySection, folder: librarySection === "workout" ? trainingFolder === "全部" ? "全身有氧" : trainingFolder : "餐食", note: "", cover: "" });
+    setSavingFavorite(false);
   };
+
+  const visibleFavorites = favorites.filter((item) => item.kind === librarySection && (librarySection === "meal" || trainingFolder === "全部" || item.folder === trainingFolder));
 
   return (
     <main className="site-shell">
@@ -622,21 +659,34 @@ export default function Home() {
 
       {active === "library" && (
         <section className="content library-view">
-          <div className="page-intro"><span>SAVED FOR LATER</span><h2>把喜欢的训练，收进自己的库</h2><p>粘贴视频链接、写下训练部位和备注，下次编排计划时不再翻遍收藏夹。</p></div>
+          <div className="page-intro"><span>SAVED FOR LATER</span><h2>吃什么、怎么练，都收在这里</h2><p>餐食灵感与训练视频分开管理；训练还可以按身体部位快速找到。</p></div>
+          <div className="library-sections" role="tablist" aria-label="收藏库分类">
+            <button className={librarySection === "meal" ? "active" : ""} onClick={() => { setLibrarySection("meal"); setFavoriteDraft((draft) => ({ ...draft, kind: "meal", folder: "餐食" })); }}><span>餐食收藏</span><b>{favorites.filter((item) => item.kind === "meal").length}</b></button>
+            <button className={librarySection === "workout" ? "active" : ""} onClick={() => { setLibrarySection("workout"); setFavoriteDraft((draft) => ({ ...draft, kind: "workout", folder: draft.folder === "餐食" ? "全身有氧" : draft.folder })); }}><span>训练收藏</span><b>{favorites.filter((item) => item.kind === "workout").length}</b></button>
+          </div>
+          {librarySection === "workout" && <div className="folder-tabs" aria-label="训练部位收藏夹">
+            {trainingFolders.map((folder) => <button key={folder} className={trainingFolder === folder ? "active" : ""} onClick={() => { setTrainingFolder(folder); if (folder !== "全部") setFavoriteDraft((draft) => ({ ...draft, folder })); }}>{folder}<span>{folder === "全部" ? favorites.filter((item) => item.kind === "workout").length : favorites.filter((item) => item.kind === "workout" && item.folder === folder).length}</span></button>)}
+          </div>}
           <div className="library-layout">
             <div className="favorite-form">
-              <h3>收藏一个新内容</h3>
-              <label>名称<input value={favoriteDraft.title} onChange={(e) => setFavoriteDraft({ ...favoriteDraft, title: e.target.value })} placeholder="例如：15分钟弹力带上肢" /></label>
+              <div className="form-heading"><span>{librarySection === "workout" ? "TRAINING" : "MEALS"}</span><h3>收藏一个{librarySection === "workout" ? "训练视频" : "餐食灵感"}</h3></div>
+              <label>名称<input value={favoriteDraft.title} onChange={(e) => setFavoriteDraft({ ...favoriteDraft, title: e.target.value })} placeholder={librarySection === "workout" ? "例如：15分钟弹力带上肢" : "例如：高蛋白早餐碗"} /></label>
               <label>视频或文章链接<input value={favoriteDraft.url} onChange={(e) => setFavoriteDraft({ ...favoriteDraft, url: e.target.value })} placeholder="https://..." /></label>
-              <label>分类<select value={favoriteDraft.category} onChange={(e) => setFavoriteDraft({ ...favoriteDraft, category: e.target.value })}><option>训练</option><option>拉伸</option><option>有氧</option><option>饮食</option><option>知识</option></select></label>
-              <label>备注<textarea value={favoriteDraft.note} onChange={(e) => setFavoriteDraft({ ...favoriteDraft, note: e.target.value })} placeholder="适合哪一天、需要什么器械、训练感受……" /></label>
-              <button onClick={addFavorite} disabled={!favoriteDraft.title.trim() || !/^https?:\/\//i.test(favoriteDraft.url.trim())}>加入收藏库</button>
+              {librarySection === "workout" && <label>训练部位<select value={favoriteDraft.folder} onChange={(e) => setFavoriteDraft({ ...favoriteDraft, folder: e.target.value })}>{trainingFolders.slice(1).map((folder) => <option key={folder}>{folder}</option>)}</select></label>}
+              <label>封面图片链接 <small>选填，B站和 YouTube 会尝试自动获取</small><input value={favoriteDraft.cover} onChange={(e) => setFavoriteDraft({ ...favoriteDraft, cover: e.target.value })} placeholder="https://...jpg" /></label>
+              <label>备注<textarea value={favoriteDraft.note} onChange={(e) => setFavoriteDraft({ ...favoriteDraft, note: e.target.value })} placeholder={librarySection === "workout" ? "适合哪一天、需要什么器械、训练感受……" : "热量、蛋白质、做法或替换食材……"} /></label>
+              <button onClick={addFavorite} disabled={savingFavorite || !favoriteDraft.title.trim() || !/^https?:\/\//i.test(favoriteDraft.url.trim())}>{savingFavorite ? "正在获取封面……" : `加入${librarySection === "workout" ? "训练" : "餐食"}收藏`}</button>
             </div>
             <div className="favorite-list">
-              {favorites.length ? favorites.map((item) => <article key={item.id}>
-                <span>{item.category}</span><h3>{item.title}</h3><p>{item.note || "暂时没有备注"}</p>
-                <div><a href={item.url} target="_blank" rel="noreferrer">打开链接 ↗</a><button onClick={() => setFavorites((items) => items.filter((x) => x.id !== item.id))}>移除</button></div>
-              </article>) : <div className="empty-library"><b>收藏库还是空的</b><p>先把你常练的B站视频放进来吧。</p></div>}
+              {visibleFavorites.length ? visibleFavorites.map((item) => <article key={item.id}>
+                <a className={`favorite-cover ${item.cover ? "has-image" : ""}`} href={item.url} target="_blank" rel="noreferrer">
+                  {item.cover ? <img src={item.cover} alt={`${item.title}封面`} referrerPolicy="no-referrer" /> : <span><b>{item.kind === "workout" ? "TRAIN" : "MEAL"}</b><small>{item.folder}</small></span>}
+                  <i aria-hidden="true">▶</i>
+                </a>
+                <div className="favorite-copy"><span>{item.kind === "workout" ? item.folder : "餐食灵感"}</span><h3>{item.title}</h3><p>{item.note || "暂时没有备注"}</p>
+                  <div className="favorite-actions"><a href={item.url} target="_blank" rel="noreferrer">打开链接 ↗</a><button onClick={() => setFavorites((items) => items.filter((x) => x.id !== item.id))}>移除</button></div>
+                </div>
+              </article>) : <div className="empty-library"><b>{librarySection === "workout" ? `${trainingFolder}收藏夹还是空的` : "餐食收藏还是空的"}</b><p>{librarySection === "workout" ? "把喜欢的训练视频放进这个部位收藏夹吧。" : "收藏食谱、餐食搭配或备餐灵感。"}</p></div>}
             </div>
           </div>
         </section>
@@ -683,6 +733,24 @@ function videoForMovement(item: string) {
     .replace(/[×＋、，或·]/g, " ")
     .trim();
   return `https://search.bilibili.com/all?keyword=${encodeURIComponent(`${topic} 正确动作讲解`)}`;
+}
+
+function inferTrainingFolder(title: string, category?: string) {
+  if (/腹|核心|腰/.test(title)) return "腹部核心";
+  if (/胸/.test(title)) return "胸部";
+  if (/背/.test(title)) return "背部";
+  if (/肩|臂|上肢/.test(title)) return "肩臂";
+  if (/臀|腿|下肢/.test(title)) return "臀腿";
+  if (/拉伸|恢复|瑜伽/.test(title) || category === "拉伸") return "拉伸恢复";
+  return "全身有氧";
+}
+
+function coverForKnownVideo(url: string) {
+  if (url.includes("BV1R3411A7g4")) return "https://i2.hdslb.com/bfs/archive/173a6c38ab24f9a7b394c2bb6b5f7c1f14412610.jpg";
+  if (url.includes("BV1kA411q7cH")) return "https://i0.hdslb.com/bfs/archive/45b79f3b14dbb80a4d9e190aaf20af3c0ca9b2bc.jpg";
+  if (url.includes("BV1Ey4y1Y7zj")) return "https://i2.hdslb.com/bfs/archive/5ed7b97d79233fc6bf8f3c794a70774cbf0aafc4.jpg";
+  const youtubeId = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|shorts\/|embed\/))([\w-]{11})/)?.[1];
+  return youtubeId ? `https://i.ytimg.com/vi/${youtubeId}/hqdefault.jpg` : "";
 }
 
 function mediaDb(): Promise<IDBDatabase> {
